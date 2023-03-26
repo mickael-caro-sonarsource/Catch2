@@ -1,0 +1,55 @@
+name: SonarCloud
+on:
+  push:
+    branches:
+      - devel
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  build:
+    name: Build and analyze
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        # We add builds one by one in this case, because there are no
+        # dimensions that are shared across the builds
+        include:
+          - cxx: clang++-10
+            build_description: Extras + Examples
+            build_type: Release
+            std: 17
+            other_pkgs: clang-10
+    env:
+      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory # Directory where build-wrapper output will be placed
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - name: Install sonar-scanner and build-wrapper
+        uses: SonarSource/sonarcloud-github-c-cpp@v1
+      - name: Prepare environment
+        run: sudo apt-get install -y ninja-build clang-10
+      - name: Configure build
+        working-directory: ${{runner.workspace}}
+        env:
+          CXX: ${{matrix.cxx}}
+          CXXFLAGS: ${{matrix.cxxflags}}
+        # Note: $GITHUB_WORKSPACE is distinct from ${{runner.workspace}}.
+        #       This is important
+        run: |
+          cmake -Bbuild -H$GITHUB_WORKSPACE \
+                -DCMAKE_BUILD_TYPE=${{matrix.build_type}} \
+                -DCMAKE_CXX_STANDARD=${{matrix.std}} \
+                -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+                -DCMAKE_CXX_EXTENSIONS=OFF \
+                -DCATCH_DEVELOPMENT_BUILD=ON \
+                -G Ninja
+      - name: Run build-wrapper
+        run: |
+          build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} cmake --build ${{runner.workspace}}/build
+      - name: Run sonar-scanner
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}"
