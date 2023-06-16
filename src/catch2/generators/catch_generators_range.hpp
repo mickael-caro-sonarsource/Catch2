@@ -22,6 +22,7 @@ class RangeGenerator final : public IGenerator<T> {
     T m_current;
     T m_end;
     T m_step;
+    T m_step2;
     bool m_positive;
 
 public:
